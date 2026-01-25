@@ -25,13 +25,13 @@ npm install
 
 ### 2) 環境変数の準備
 
-`.env.example` をコピーして `.env.company` を作成してください。
+`.env.example` をコピーして `.env` を作成してください。
 
 ```bash
-cp .env.example .env.company
+cp .env.example .env
 ```
 
-`.env.company` には最低限以下が必要です。
+`.env` には最低限以下が必要です。
 
 - Gmail OAuth
   - `GOOGLE_CLIENT_ID`
@@ -46,11 +46,11 @@ cp .env.example .env.company
 npm start
 ```
 
-`ENV=company` で `.env.company` が読み込まれます。
+`.env` がデフォルトで読み込まれます。
 
 ## 自動下書きの設定
 
-`.env.company` の主な設定値:
+`.env` の主な設定値:
 
 - `FEATURE_AUTODRAFT_ALL=true`
 - `FEATURE_AUTODRAFT_ONLY_MODE=true`
@@ -71,7 +71,7 @@ npm start
 
 ## 注意
 
-- `.env.company` は絶対にコミットしないでください
+- `.env` は絶対にコミットしないでください
 - Refresh Token は機密情報です
 
 ## ライセンス

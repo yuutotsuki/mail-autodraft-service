@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # Autodraft Service 起動スクリプト
-# 使用方法: ./start-bot.sh [personal|company]
+# 使用方法: ./start-bot.sh [env]
 
 set -e
 
 # デフォルト環境をcompanyに設定
-ENV_TYPE=${1:-company}
+ENV_TYPE=${1:-}
 
 echo "🚀 Autodraft Service を起動します..."
 echo "📁 環境: $ENV_TYPE"
@@ -15,11 +15,14 @@ echo "📁 環境: $ENV_TYPE"
 cd "$(dirname "$0")"
 
 # 環境変数ファイルの存在確認
-ENV_FILE=".env.$ENV_TYPE"
+ENV_FILE=".env"
+if [ -n "$ENV_TYPE" ]; then
+    ENV_FILE=".env.$ENV_TYPE"
+fi
 if [ ! -f "$ENV_FILE" ]; then
     echo "❌ エラー: $ENV_FILE が見つかりません"
     echo "利用可能な環境:"
-    ls -la .env.* 2>/dev/null || echo "環境ファイルが見つかりません"
+    ls -la .env* 2>/dev/null || echo "環境ファイルが見つかりません"
     exit 1
 fi
 
@@ -41,4 +44,8 @@ fi
 
 # サービスを起動
 echo "⚡️ サービスを起動中..."
-ENV=$ENV_TYPE npm start
+if [ -n "$ENV_TYPE" ]; then
+    ENV=$ENV_TYPE npm start
+else
+    npm start
+fi

@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 
 export function initializeEnvironment(): void {
-  const envPath = `.env.${process.env.ENV || 'personal'}`;
+  const envPath = process.env.ENV ? `.env.${process.env.ENV}` : '.env';
   dotenv.config({ path: envPath });
 
   console.log(`✅ [environment.ts] .env ファイル読み込み: ${envPath}`);
