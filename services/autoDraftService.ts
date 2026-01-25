@@ -3,14 +3,11 @@ import axios from 'axios';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { getGmailThread, listGmailMessages } from './gmailApiList';
-import { fetchConnectToken } from './tokenService';
-import { createGmailDraft, createGmailDraftDirect } from './gmailService';
+import { createGmailDraftDirect } from './gmailService';
 import { logAction, hashUserId } from '../utils/actionLogger';
 import { generateTraceId } from '../utils/ids';
 import { getAutodraftState, upsertAutodraftState } from '../db/sqlite';
 import { getAutoDraftModel } from '../config/models';
-import { getMcpTool } from '../getMcpTool';
-import util from 'util';
 import { decodeMimeWords } from '../utils/mime';
 import { getGoogleAccessTokenForScope } from './googleTokenProvider';
 
@@ -301,55 +298,6 @@ async function generateDraftBody(threadText: string, greeting?: string): Promise
   return appendSignature(withGreeting);
 }
 
-async function responsesWithRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 3): Promise<T> {
-  let lastErr: any;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      return await fn();
-    } catch (e: any) {
-      lastErr = e;
-      const status = e?.status || e?.response?.status;
-      const code = e?.code || e?.error?.code;
-      const reqId = e?.request_id || e?.headers?.['x-request-id'];
-      const retriable = (status >= 500) || ['server_error', 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN'].includes(code);
-      console.warn(`[autodraft] responses error (attempt ${attempt}/${maxAttempts})`, { status, code, reqId });
-      if (!retriable || attempt === maxAttempts) break;
-      const backoffMs = 400 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 200);
-      await new Promise((r) => setTimeout(r, backoffMs));
-    }
-  }
-  throw lastErr;
-}
-
-function isTruthyEnv(v?: string): boolean {
-  return v ? /^(1|true|yes|on)$/i.test(v) : false;
-}
-
-function debugResponses(label: string, resp: any) {
-  if (!isTruthyEnv(process.env.DEBUG_AUTODRAFT_RESPONSES)) return;
-  try {
-    const out = Array.isArray(resp?.output) ? resp.output : [];
-    const items = out.flatMap((o: any) => Array.isArray(o?.content) ? o.content : []);
-    const uses = items.filter((c: any) => c?.type === 'tool_use').map((u: any) => ({
-      type: u.type,
-      name: u.name,
-      id: u.id,
-      // show only argument keys to avoid leaking content
-      argKeys: u?.input ? Object.keys(u.input) : [],
-    }));
-    const results = items.filter((c: any) => c?.type === 'tool_result').map((r: any) => ({
-      type: r.type,
-      tool_use_id: r?.tool_use_id,
-      ok: !!r?.content,
-    }));
-    const text = resp?.output_text ?? '';
-    console.log(`[autodraft][debug] ${label}: output_text.len=${String(text).length} tool_uses=${uses.length} tool_results=${results.length}`);
-    if (uses.length) console.log('[autodraft][debug] tool_uses:', util.inspect(uses, { depth: 2 }));
-    if (results.length) console.log('[autodraft][debug] tool_results:', util.inspect(results, { depth: 2 }));
-  } catch (e) {
-    console.log('[autodraft][debug] failed to summarize responses:', (e as any)?.message || e);
-  }
-}
 
 export async function runAutoDraftOnce(): Promise<number> {
   // Build Gmail search query
@@ -378,10 +326,6 @@ export async function runAutoDraftOnce(): Promise<number> {
   const threads = Array.from(byThread.entries()).slice(0, limit);
   let drafted = 0;
 
-  // Token for MCP draft creation (via Responses API)
-  let token = '';
-  try { token = await fetchConnectToken(); } catch (e) { console.warn('[autodraft] connect token unavailable', e); return 0; }
-
   for (const [threadId, meta] of threads) {
     try {
       const state = getAutodraftState(threadId);
@@ -409,103 +353,7 @@ export async function runAutoDraftOnce(): Promise<number> {
       const t0 = Date.now();
       const body = await generateDraftBody(ctx, greeting);
       const draftPayload = { to: toAddr, subject, body, threadId, createdAt: Date.now() } as any;
-      const useResponses = getEnvBool('FEATURE_AUTODRAFT_RESPONSES', true);
-
-      const executeFallback = async (reason: string) => {
-        console.info(`[autodraft] ${reason}; ensuring draft via fallback path`);
-        if (isTruthyEnv(process.env.AUTODRAFT_FORCE_RESPONSES_ONLY)) {
-          throw new Error(reason || 'responses_only');
-        }
-        if (isTruthyEnv(process.env.FEATURE_AUTODRAFT_DIRECT_GMAIL)) {
-          await createGmailDraftDirect(draftPayload);
-        } else {
-          await createGmailDraft(token, draftPayload);
-        }
-      };
-
-      if (useResponses) {
-        try {
-          const client = getOpenAIClient();
-          const gmailTool = getMcpTool('gmail', token);
-          if (isTruthyEnv(process.env.DEBUG_AUTODRAFT_RESPONSES)) {
-            try {
-              const hdrKeys = Object.keys((gmailTool as any)?.headers || {});
-              console.log('[autodraft][debug] mcp tool:', {
-                server_url: (gmailTool as any)?.server_url,
-                header_keys: hdrKeys,
-                allowed_tools: (gmailTool as any)?.allowed_tools,
-              });
-            } catch {}
-          }
-          // Restrict to draft-like actions to avoid accidental send.
-          // Allow common name variants used by Gmail MCP implementations.
-          (gmailTool as any).allowed_tools = [
-            'create-draft',
-            'create_draft',
-            'drafts/create',
-            'createDraft',
-            'create_email_draft',
-            'gmail-create-draft',
-          ];
-          const sys = 'あなたはMCPを使ってGmailの下書きを作成するアシスタントです。sendや送信は絶対に行わず、create-draft アクションを1回だけ実行します。';
-          const user = [
-            '次のパラメータで Gmail の下書きを作成してください。',
-            '必ず使用するフィールドは to, subject, body のみ。',
-            'threadId や inReplyTo, attachments, cc/bcc など他のフィールドは一切含めないでください。',
-            `to=${toAddr}`,
-            `subject=${subject}`,
-            'bodyは以下の本文をそのまま使用：',
-            '--- 本文 ---',
-            body,
-          ].join('\n');
-          const forced = (process.env.GMAIL_DRAFT_TOOL_NAME || '').trim();
-          let resp: any;
-          const attempt = async (toolChoice: any) => responsesWithRetry(() => client.responses.create({
-              model: getAutoDraftModel(),
-              input: [
-                { role: 'system', content: sys },
-                { role: 'user', content: user },
-              ],
-              tools: [gmailTool],
-              max_output_tokens: 64,
-              temperature: 0.0,
-              tool_choice: toolChoice,
-            } as any), 'autodraft');
-
-          if (forced) {
-            console.info('[autodraft] forcing tool_choice:', forced);
-            try {
-              resp = await attempt({ type: 'tool', name: forced });
-              debugResponses('forced', resp);
-            } catch (e) {
-              console.warn('[autodraft] forced tool failed, falling back to required selection');
-              resp = await attempt('required');
-              debugResponses('required-fallback', resp);
-            }
-          } else {
-            resp = await attempt('required');
-            debugResponses('required', resp);
-          }
-          // Best-effort success check. If we cannot confirm tool execution,
-          // fall back to direct HTTP action to ensure a draft exists.
-          const outText = resp?.output_text || '';
-          if (outText) console.info('[autodraft] responses note:', outText);
-          const toolCalls = (resp?.output || [])
-            .flatMap((o: any) => Array.isArray(o?.content) ? o.content : [])
-            .filter((c: any) => c?.type === 'tool_result' || c?.type === 'tool_use');
-          const executed = Array.isArray(toolCalls) && toolCalls.length > 0;
-          if (!executed) {
-            console.info('[autodraft] no tool execution detected; ensuring via direct HTTP action');
-            await executeFallback('no_tool_execution_detected');
-          }
-        } catch (e) {
-          console.warn('[autodraft] responses+mcp path failed, falling back to direct create_draft', e);
-          await executeFallback('responses_mcp_failed');
-        }
-      } else {
-        console.info('[autodraft] responses path disabled via FEATURE_AUTODRAFT_RESPONSES=false');
-        await executeFallback('responses_disabled');
-      }
+      await createGmailDraftDirect(draftPayload);
       drafted++;
       try { await markMessageProcessed(meta.latestId); } catch (e) { console.warn('[autodraft] mark processed failed', e); }
       try { upsertAutodraftState(threadId, meta.latestId); } catch {}
