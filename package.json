@@ -10,13 +10,9 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "inspect:exec": "tsx scripts/inspect_executions.ts",
-    "diagnose:calendar": "tsx scripts/diagnose_calendar.ts",
-    "diagnose:gmail": "tsx scripts/diagnose_gmail.ts",
     "sweep:cache": "node dist/scripts/sweep_cache.js",
     "diag:google-oauth": "tsx scripts/diag_google_oauth.ts",
     "diag:token-server": "tsx scripts/diag_token_server.ts",
-    "diag:mcp-token": "tsx scripts/diag_mcp_token.ts",
-    "diag:responses-mcp": "tsx scripts/diag_responses_mcp.ts",
     "smoke:autodraft": "tsx scripts/smoke_autodraft.ts"
   },
   "keywords": [],

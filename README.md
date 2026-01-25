@@ -40,7 +40,13 @@ cp .env.example .env
 - OpenAI
   - `OPENAI_API_KEY`
 
-### 3) 起動
+### 3) ビルド
+
+```bash
+npm run build
+```
+
+### 4) 起動
 
 ```bash
 npm start
