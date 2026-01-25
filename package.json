@@ -25,9 +25,11 @@
     "better-sqlite3": "^9.6.0",
     "dotenv": "^16.5.0",
     "iconv-lite": "^0.6.3",
-    "openai": "^4.52.7"
+    "openai": "^4.52.7",
+    "pg": "^8.13.1"
   },
   "devDependencies": {
+    "@types/pg": "^8.16.0",
     "cross-env": "^7.0.3",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"

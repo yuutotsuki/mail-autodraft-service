@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Mutex } from 'async-mutex';
+import { getEnabledUserToken } from '../db/postgres';
 
 type TokenInfo = { access_token: string; expires_in?: number; expires_at?: number };
 
@@ -61,8 +62,17 @@ async function fetchFromTokenServer(scopeOverride?: string): Promise<TokenInfo |
 async function fetchFromRefreshToken(): Promise<TokenInfo | null> {
   const cid = process.env.GOOGLE_CLIENT_ID;
   const secret = process.env.GOOGLE_CLIENT_SECRET;
-  const refresh = process.env.GOOGLE_REFRESH_TOKEN;
-  if (!cid || !secret || !refresh) return null;
+  let refresh = process.env.GOOGLE_REFRESH_TOKEN;
+  if (!cid || !secret) return null;
+  if (!refresh) {
+    try {
+      const dbToken = await getEnabledUserToken();
+      if (dbToken?.refresh_token) {
+        refresh = dbToken.refresh_token;
+      }
+    } catch {}
+  }
+  if (!refresh) return null;
   try {
     const params = new URLSearchParams();
     params.set('client_id', cid);

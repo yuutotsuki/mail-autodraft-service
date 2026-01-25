@@ -40,6 +40,8 @@ cp .env.example .env
 - OpenAI
   - `OPENAI_API_KEY`
 
+複数ユーザーのトークンをDBで管理する場合は `DATABASE_URL` を設定してください。
+
 ### 3) ビルド
 
 ```bash
