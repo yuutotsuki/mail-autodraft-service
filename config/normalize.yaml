@@ -1,0 +1,28 @@
+config_version: "0.1.0"
+language: ja
+updated_at: "2025-08-31T15:00:00Z"
+safe_mode: true
+log_level: info
+on_error: log
+masking_phase_default: after
+max_text_length: 20000
+max_length_apply_at: input
+test_manifest: tests/golden/ja/email.yaml
+_notes: "まずは安全側。長文は入口で切る"
+
+pipeline:
+  - unicode_nfkc
+  - to_halfwidth
+  - lowercase
+  - trim
+  - collapse_spaces
+  - unify_dash
+  - unify_quotes
+  - normalize_kigou
+  # マスキングは出力/ログ整形フェーズ（after）に寄せる
+  - name: mask_emails
+    pipeline_step_id: MASK_EMAILS
+    masking_phase: after
+    on_error: log
+  - normalize_numbers
+  - strip_quotes

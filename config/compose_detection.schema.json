@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "compose_detection.schema.json",
+  "type": "object",
+  "required": [
+    "config_version",
+    "language",
+    "updated_at",
+    "thresholds",
+    "triggers",
+    "reply_triggers",
+    "markers"
+  ],
+  "properties": {
+    "config_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "language": { "type": "string", "enum": ["ja", "en"], "default": "ja" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "safe_mode": { "type": "boolean", "default": true },
+    "log_level": { "type": "string", "enum": ["error", "warn", "info", "debug"], "default": "info" },
+    "test_manifest": { "type": "string" },
+    "_notes": { "type": "string" },
+    "on_error": { "type": "string", "enum": ["fail", "skip", "log"], "default": "log", "description": "ルール評価/正規表現エラー時の既定挙動" },
+    "max_text_length": { "type": "integer", "minimum": 1, "description": "超過分は切り落とす" },
+    "max_length_apply_at": { "type": "string", "enum": ["input", "output"], "default": "input" },
+
+    "thresholds": {
+      "type": "object",
+      "required": ["compose_min_score", "reply_min_score"],
+      "properties": {
+        "compose_min_score": { "type": "number", "minimum": 0 },
+        "reply_min_score": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+
+    "triggers": { "type": "array", "items": { "$ref": "#/$defs/triggerComposeRule" }, "minItems": 1 },
+    "reply_triggers": { "type": "array", "items": { "$ref": "#/$defs/triggerReplyRule" }, "minItems": 1 },
+
+    "markers": {
+      "type": "object",
+      "required": ["to_markers", "subject_markers", "body_markers"],
+      "properties": {
+        "to_markers": { "type": "array", "items": { "$ref": "#/$defs/markerToRule" } },
+        "subject_markers": { "type": "array", "items": { "$ref": "#/$defs/markerSubjectRule" } },
+        "body_markers": { "type": "array", "items": { "$ref": "#/$defs/markerBodyRule" } }
+      },
+      "additionalProperties": false
+    },
+
+    "regexes": { "type": "array", "items": { "$ref": "#/$defs/regexRule" } },
+    "blockers": { "type": "array", "items": { "$ref": "#/$defs/blockerRule" } },
+    "context_signals": { "type": "array", "items": { "$ref": "#/$defs/contextRule" } },
+
+    "extraction_rules": {
+      "type": "object",
+      "properties": {
+        "to": { "type": "array", "items": { "$ref": "#/$defs/extractRule" } },
+        "subject": { "type": "array", "items": { "$ref": "#/$defs/extractRule" } },
+        "body": { "type": "array", "items": { "$ref": "#/$defs/extractRule" } }
+      },
+      "additionalProperties": false
+    }
+  },
+
+  "$defs": {
+    "baseRule": {
+      "type": "object",
+      "required": ["rule_id", "explanation", "weight"],
+      "properties": {
+        "rule_id": { "type": "string" },
+        "explanation": { "type": "string", "maxLength": 120 },
+        "weight": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+
+    "triggerComposeRule": {
+      "allOf": [
+        { "$ref": "#/$defs/baseRule" },
+        {
+          "properties": {
+            "rule_id": { "type": "string", "pattern": "^TRIG_COMPOSE_ja_\\d{3}$" },
+            "phrases": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          },
+          "required": ["phrases"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "triggerReplyRule": {
+      "allOf": [
+        { "$ref": "#/$defs/baseRule" },
+        {
+          "properties": {
+            "rule_id": { "type": "string", "pattern": "^TRIG_REPLY_ja_\\d{3}$" },
+            "phrases": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          },
+          "required": ["phrases"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "markerToRule": {
+      "allOf": [
+        { "$ref": "#/$defs/baseRule" },
+        {
+          "properties": {
+            "rule_id": { "type": "string", "pattern": "^MRK_TO_ja_\\d{3}$" },
+            "terms": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          },
+          "required": ["terms"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "markerSubjectRule": {
+      "allOf": [
+        { "$ref": "#/$defs/baseRule" },
+        {
+          "properties": {
+            "rule_id": { "type": "string", "pattern": "^MRK_SUBJECT_ja_\\d{3}$" },
+            "terms": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          },
+          "required": ["terms"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "markerBodyRule": {
+      "allOf": [
+        { "$ref": "#/$defs/baseRule" },
+        {
+          "properties": {
+            "rule_id": { "type": "string", "pattern": "^MRK_BODY_ja_\\d{3}$" },
+            "terms": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          },
+          "required": ["terms"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "regexRule": {
+      "allOf": [
+        { "$ref": "#/$defs/baseRule" },
+        {
+          "properties": {
+            "rule_id": { "type": "string", "pattern": "^RX_(COMPOSE|REPLY|GEN)_ja_\\d{3}$" },
+            "target": { "type": "string", "enum": ["compose", "reply", "both", "extract"], "default": "both" },
+            "pattern": { "type": "string" },
+            "flags": { "type": "string" }
+          },
+          "required": ["pattern"]
+        }
+      ],
+      "additionalProperties": false
+    },
+
+    "blockerRule": {
+      "allOf": [
+        { "$ref": "#/$defs/baseRule" },
+        {
+          "properties": {
+            "rule_id": { "type": "string", "pattern": "^BLK_GEN_ja_\\d{3}$" },
+            "phrases": { "type": "array", "items": { "type": "string" } },
+            "pattern": { "type": "string" },
+            "block": { "type": "boolean", "default": false }
+          }
+        }
+      ],
+      "anyOf": [
+        { "required": ["phrases"] },
+        { "required": ["pattern"] }
+      ],
+      "additionalProperties": false
+    },
+
+    "contextRule": {
+      "type": "object",
+      "required": ["rule_id", "explanation", "weight", "target"],
+      "properties": {
+        "rule_id": { "type": "string", "pattern": "^CTX_(COMPOSE|REPLY)_ja_\\d{3}$" },
+        "explanation": { "type": "string", "maxLength": 120 },
+        "weight": { "type": "number" },
+        "target": { "type": "string", "enum": ["compose", "reply"] },
+        "condition": {
+          "type": "object",
+          "properties": {
+            "in_thread": { "type": "boolean" },
+            "quoted_ratio_gte": { "type": "number", "minimum": 0, "maximum": 1 },
+            "has_email": { "type": "boolean" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "extractRule": {
+      "type": "object",
+      "required": ["rule_id", "explanation", "pattern"],
+      "properties": {
+        "rule_id": { "type": "string", "pattern": "^RX_EXTRACT_ja_\\d{3}$" },
+        "explanation": { "type": "string", "maxLength": 120 },
+        "pattern": { "type": "string" },
+        "flags": { "type": "string" },
+        "group": { "type": "integer", "minimum": 0, "default": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+
+  "additionalProperties": false
+}
+

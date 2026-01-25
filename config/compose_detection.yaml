@@ -1,0 +1,80 @@
+config_version: "0.1.0"
+language: ja
+updated_at: "2025-08-31T15:00:00Z"
+safe_mode: true
+log_level: info
+on_error: log
+max_text_length: 20000
+max_length_apply_at: input
+test_manifest: tests/golden/ja/email.yaml
+_notes: "まずは強いトリガ少数+補助シグナル"
+
+thresholds:
+  compose_min_score: 2.0
+  reply_min_score: 2.0
+
+triggers:
+  - rule_id: TRIG_COMPOSE_ja_001
+    explanation: "作成/送信の明示"
+    weight: 2.0
+    phrases: ["作成", "新規", "送信", "メールして", "ドラフト", "下書き", "メール作成", "作成して"]
+
+  # 軽いシグナル（表現ゆらぎ）
+  - rule_id: TRIG_COMPOSE_ja_002
+    explanation: "作成の言い換え（弱）"
+    weight: 0.5
+    phrases: ["作って", "作っといて", "起票", "起案", "用意して"]
+
+reply_triggers:
+  - rule_id: TRIG_REPLY_ja_001
+    explanation: "返信の明示"
+    weight: 2.0
+    phrases: ["返信", "リプライ", "返事", "返答"]
+
+markers:
+  to_markers:
+    - rule_id: MRK_TO_ja_001
+      explanation: "宛先の明示"
+      weight: 1.0
+      terms: ["宛先", "あて先", "to", "TO", "アドレス", "宛先:", "宛先：", "to:", "To:", "TO:"]
+  subject_markers:
+    - rule_id: MRK_SUBJECT_ja_001
+      explanation: "件名の明示"
+      weight: 1.0
+      terms: ["件名", "題名", "タイトル", "subject", "Subject", "SUBJECT", "件名:", "件名：", "Subject:"]
+  body_markers:
+    - rule_id: MRK_BODY_ja_001
+      explanation: "本文の明示"
+      weight: 0.5
+      terms: ["本文", "メッセージ", "内容", "body", "Body"]
+
+regexes:
+  - rule_id: RX_COMPOSE_ja_001
+    explanation: "メールアドレス検出でcompose寄与"
+    weight: 0.75
+    target: compose
+    # Slackの <mailto:x@y|x@y> 形式や前後の全角記号に隣接しても検出できるよう軽く緩める
+    pattern: "[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}"
+    flags: "i"
+
+blockers:
+  - rule_id: BLK_GEN_ja_001
+    explanation: "テスト文言は抑止"
+    weight: -999
+    phrases: ["テスト", "試し", "検証用"]
+    block: true
+
+context_signals:
+  - rule_id: CTX_REPLY_ja_001
+    explanation: "スレッド内は返信寄り"
+    target: reply
+    weight: 0.5
+    condition: { in_thread: true }
+
+extraction_rules:
+  to:
+    - rule_id: RX_EXTRACT_ja_001
+      explanation: "宛先: マーカー+メール"
+      pattern: "(宛先|to)[:：]\\s*([\\w._%+-]+@[\\w.-]+)"
+      flags: "i"
+      group: 2

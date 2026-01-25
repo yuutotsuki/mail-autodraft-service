@@ -1,0 +1,32 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Node/TypeScript
+node_modules/
+dist/
+.memos/
+backup/
+*.vbs
+*.bat
+
+# Local databases and runtime data
+data/
+*.db
+*.sqlite
+*.sqlite3
+# Logs and runtime outputs / templates
+logs/
+*.log
+PR_BODY.md
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Backups/bundles
+*.bundle
+
+# Generated textual memories
+memory/**/textual_memory.json

@@ -1,0 +1,174 @@
+cases:
+  - id: GJ-001
+    input: "新規でメール作成して 宛先: foo@example.com 件名: 見積の件 本文: よろしくお願いします。"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: true }
+    expected:
+      label: compose
+      params:
+        to: ["foo@example.com"]
+        subject: "見積の件"
+        body: "よろしくお願いします。"
+    notes: "明示的なマーカーあり。composeの基本形"
+
+  - id: GJ-002
+    input: "ドラフト作って to: bar@example.com subject: ご連絡 body: 本文は短めで。"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: true }
+    expected:
+      label: compose
+      params:
+        to: ["bar@example.com"]
+        subject: "ご連絡"
+        body: "本文は短めで。"
+    notes: "英字マーカー混在"
+
+  - id: GJ-003
+    input: "この内容送信して 宛先: baz@example.com 件名: 契約について 本文: 契約書ドラフトをお送りします。"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: true }
+    expected:
+      label: compose
+      params:
+        to: ["baz@example.com"]
+        subject: "契約について"
+        body: "契約書ドラフトをお送りします。"
+    notes: "送信トリガ + マーカー"
+
+  - id: GJ-004
+    input: "このメールに返信して 件名: Re: 見積の件 本文: 承知しました。"
+    context: { in_thread: true, quoted_ratio: 0.2, has_email: false }
+    expected:
+      label: reply
+      params:
+        subject: "Re: 見積の件"
+        body: "承知しました。"
+    notes: "in_threadで返信寄り"
+
+  - id: GJ-005
+    input: "返事して。本文: ありがとうございます。"
+    context: { in_thread: true, quoted_ratio: 0.0, has_email: false }
+    expected:
+      label: reply
+      params:
+        body: "ありがとうございます。"
+    notes: "返信トリガのみ"
+
+  - id: GJ-006
+    input: "Re: 先日の件に関して 返信お願いします"
+    context: { in_thread: true, quoted_ratio: 0.3, has_email: false }
+    expected:
+      label: reply
+    notes: "Re: プレフィックス + 返信指示"
+
+  - id: GJ-007
+    input: "テストなのでメール送らないで。"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: false }
+    expected:
+      label: other
+    notes: "blocker: テスト"
+
+  - id: GJ-008
+    input: "FYI: 来週の予定です。"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: false }
+    expected:
+      label: other
+    notes: "情報共有のみ"
+
+  - id: GJ-009
+    input: "連絡しておいて。"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: false }
+    expected:
+      label: other
+    notes: "曖昧（宛先/件名/本文なし）"
+
+  - id: GJ-010
+    input: "CCにも入れて送って。to: alice@example.com 件名: ご案内 本文: 詳細は別途。"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: true }
+    expected:
+      label: compose
+      params:
+        to: ["alice@example.com"]
+        subject: "ご案内"
+        body: "詳細は別途。"
+    notes: "CC指示あり（現段階では抽出対象外）"
+
+  - id: GJ-011
+    input: "> 引用: 先日の議事録\nこのスレッドで返信して『了解です』と送って"
+    context: { in_thread: true, quoted_ratio: 0.5, has_email: false }
+    expected:
+      label: reply
+      params:
+        body: "了解です"
+    notes: "引用率高 + 返信指示"
+
+  - id: GJ-012
+    input: "送って: bob@example.com 件名: 案件A 本文: 見積提示します。"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: true }
+    expected:
+      label: compose
+      params:
+        to: ["bob@example.com"]
+        subject: "案件A"
+        body: "見積提示します。"
+    notes: "短いトリガ + マーカー"
+
+  - id: GJ-013
+    input: "先方に返信をお願いします。本文: 先日はありがとうございます。"
+    context: { in_thread: true, quoted_ratio: 0.1, has_email: false }
+    expected:
+      label: reply
+      params:
+        body: "先日はありがとうございます。"
+    notes: "返信の言い換え"
+
+  - id: GJ-014
+    input: "議事録共有します（メール不要）。"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: false }
+    expected:
+      label: other
+    notes: "メール不要の明示"
+
+  - id: GJ-015
+    input: "明日10時のカレンダー作成して"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: false }
+    expected:
+      label: other
+    notes: "将来のCalendar用（今はother）"
+
+  - id: GJ-016
+    input: "下書き保存だけして。宛先: carol@example.com 件名: 企画書 本文: 初稿です。"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: true }
+    expected:
+      label: compose
+      params:
+        to: ["carol@example.com"]
+        subject: "企画書"
+        body: "初稿です。"
+    notes: "下書き（compose系）"
+
+  - id: GJ-017
+    input: "件名: タイトルだけ書いたけど、送信は不要"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: false }
+    expected:
+      label: other
+    notes: "マーカーのみで実行意図なし"
+
+  - id: GJ-018
+    input: "メールして"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: false }
+    expected:
+      label: compose
+    notes: "最小のcomposeトリガ（低確信度想定）"
+
+  - id: GJ-019
+    input: "返信不要です。FYIです。"
+    context: { in_thread: true, quoted_ratio: 0.1, has_email: false }
+    expected:
+      label: other
+    notes: "返信・送信の否定"
+
+  - id: GJ-020
+    input: "転記：社内共有のみ（メール送付はしない）"
+    context: { in_thread: false, quoted_ratio: 0.0, has_email: false }
+    expected:
+      label: other
+    notes: "転記/共有のみ"
+

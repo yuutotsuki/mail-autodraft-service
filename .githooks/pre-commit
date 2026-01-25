@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+if [ -z "${staged}" ]; then exit 0; fi
+blocked=$(printf "%s\n" "$staged" | grep -E '^(logs/|memory/.*/textual_memory\.json$|node_modules/|dist/|data/|backup/|\.memos/|PR_BODY\.md$|.*\.(db|sqlite3?|bundle)$|\.env($|\.))' || true)
+blocked=$(printf "%s\n" "$blocked" | grep -vE '^\.env\.example$' || true)
+if [ -n "$blocked" ]; then
+  echo "ERROR: Commit blocked due to prohibited paths:" >&2
+  echo "$blocked" >&2
+  echo >&2
+  echo "These are generated or sensitive and must not be committed:" >&2
+  echo "- logs/" >&2
+  echo "- memory/**/textual_memory.json" >&2
+  echo "- node_modules/, dist/, data/, backup/, .memos/" >&2
+  echo "- PR_BODY.md" >&2
+  echo "- *.db, *.sqlite, *.sqlite3, *.bundle" >&2
+  echo "- .env, .env.* (except .env.example)" >&2
+  echo >&2
+  echo "If you absolutely must bypass (not recommended): git commit --no-verify" >&2
+  exit 1
+fi
+exit 0

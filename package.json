@@ -1,0 +1,42 @@
+{
+  "name": "mail-autodraft-service",
+  "version": "1.0.0",
+  "main": "autodraft.ts",
+  "scripts": {
+    "start": "cross-env ENV=company tsx autodraft.ts",
+    "start:personal": "cross-env ENV=personal tsx autodraft.ts",
+    "start:company": "cross-env ENV=company tsx autodraft.ts",
+    "dev": "cross-env ENV=company tsx --watch autodraft.ts",
+    "dev:personal": "cross-env ENV=personal tsx --watch autodraft.ts",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "inspect:exec": "tsx scripts/inspect_executions.ts",
+    "diagnose:calendar": "tsx scripts/diagnose_calendar.ts",
+    "diagnose:gmail": "tsx scripts/diagnose_gmail.ts",
+    "sweep:cache": "node dist/scripts/sweep_cache.js",
+    "smoke:list": "cross-env ENV=company tsx scripts/smoke_list.ts",
+    "diag:google-oauth": "cross-env ENV=company tsx scripts/diag_google_oauth.ts",
+    "diag:token-server": "cross-env ENV=company tsx scripts/diag_token_server.ts",
+    "diag:mcp-token": "cross-env ENV=company tsx scripts/diag_mcp_token.ts",
+    "diag:responses-mcp": "cross-env ENV=company tsx scripts/diag_responses_mcp.ts",
+    "smoke:autodraft": "cross-env ENV=company tsx scripts/smoke_autodraft.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "description": "Auto-create Gmail drafts for unread emails (no send).",
+  "dependencies": {
+    "async-mutex": "^0.5.0",
+    "axios": "^1.7.2",
+    "better-sqlite3": "^9.6.0",
+    "dotenv": "^16.5.0",
+    "iconv-lite": "^0.6.3",
+    "openai": "^4.52.7"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}

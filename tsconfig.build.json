@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "autodraft.ts",
+    "getMcpTool.ts",
+    "services/**/*.ts",
+    "db/**/*.ts",
+    "types/**/*.ts",
+    "utils/**/*.ts",
+    "config/**/*.ts",
+    "models/**/*.ts"
+  ],
+  "exclude": [
+    "backup/**",
+    "node_modules/**",
+    "dist/**",
+    "**/*コピー*.ts",
+    "**/*過去*.ts",
+    "**/*.bak.ts",
+    "**/*.backup.ts"
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "normalize.schema.json",
+  "type": "object",
+  "required": ["config_version", "language", "updated_at", "pipeline"],
+  "properties": {
+    "config_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$", "examples": ["0.1.0"] },
+    "language": { "type": "string", "enum": ["ja", "en"], "default": "ja", "examples": ["ja"] },
+    "updated_at": { "type": "string", "format": "date-time", "examples": ["2025-08-31T15:00:00Z"] },
+    "safe_mode": { "type": "boolean", "default": true },
+    "log_level": { "type": "string", "enum": ["error", "warn", "info", "debug"], "default": "info" },
+    "test_manifest": { "type": "string", "description": "相対パス推奨（任意）" },
+    "_notes": { "type": "string" },
+    "on_error": { "type": "string", "enum": ["fail", "skip", "log"], "default": "log", "description": "正規化中に例外が出た時の既定挙動" },
+    "masking_phase_default": { "type": "string", "enum": ["before", "after"], "default": "after", "description": "mask_*系ステップを正規化の前/後どちらに寄せるか" },
+    "max_text_length": { "type": "integer", "minimum": 1, "description": "超過分は切り落とす" },
+    "max_length_apply_at": { "type": "string", "enum": ["input", "output"], "default": "input" },
+    "pipeline": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "unicode_nfkc",
+              "to_halfwidth",
+              "lowercase",
+              "trim",
+              "collapse_spaces",
+              "unify_dash",
+              "unify_quotes",
+              "normalize_kigou",
+              "normalize_numbers",
+              "mask_emails",
+              "mask_phones",
+              "mask_urls",
+              "strip_quotes"
+            ]
+          },
+          {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "pipeline_step_id": { "type": "string", "pattern": "^[A-Z0-9_\\-]{1,32}$", "description": "任意。一意だとログ追跡が容易" },
+              "name": {
+                "type": "string",
+                "enum": [
+                  "unicode_nfkc",
+                  "to_halfwidth",
+                  "lowercase",
+                  "trim",
+                  "collapse_spaces",
+                  "unify_dash",
+                  "unify_quotes",
+                  "normalize_kigou",
+                  "normalize_numbers",
+                  "mask_emails",
+                  "mask_phones",
+                  "mask_urls",
+                  "strip_quotes"
+                ]
+              },
+              "enabled": { "type": "boolean", "default": true },
+              "on_error": { "type": "string", "enum": ["fail", "skip", "log"] },
+              "masking_phase": { "type": "string", "enum": ["before", "after"], "description": "mask_*系のみ有効。未指定はグローバル既定に従う" },
+              "options": { "type": "object", "additionalProperties": true }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "noise_words": { "type": "array", "items": { "type": "string" } },
+        "preserve": {
+          "type": "object",
+          "properties": {
+            "code_blocks": { "type": "boolean" },
+            "urls": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
+
