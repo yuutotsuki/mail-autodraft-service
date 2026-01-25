@@ -27,7 +27,7 @@ function findProjectRoot(): string {
   let dir = path.resolve(__dirname, '..');
   for (let i = 0; i < 6; i++) {
     const pkg = path.join(dir, 'package.json');
-    const anchorTs = path.join(dir, 'slack-bot.ts');
+    const anchorTs = path.join(dir, 'autodraft.ts');
     if (fs.existsSync(pkg) && fs.existsSync(anchorTs)) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) break;
