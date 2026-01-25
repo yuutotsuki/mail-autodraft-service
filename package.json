@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "main": "autodraft.ts",
   "scripts": {
-    "start": "tsx autodraft.ts",
-    "start:env": "cross-env ENV=company tsx autodraft.ts",
+    "start": "node dist/autodraft.js",
+    "start:env": "cross-env ENV=company node dist/autodraft.js",
     "dev": "tsx --watch autodraft.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc -p tsconfig.build.json",
