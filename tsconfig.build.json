@@ -2,6 +2,7 @@
   "extends": "./tsconfig.json",
   "include": [
     "autodraft.ts",
+    "auth.ts",
     "services/**/*.ts",
     "db/**/*.ts",
     "types/**/*.ts",

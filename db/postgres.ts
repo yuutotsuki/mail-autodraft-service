@@ -48,3 +48,20 @@ export async function getEnabledUserToken(): Promise<{ email: string; refresh_to
     return null;
   }
 }
+
+export async function upsertAutodraftUser(email: string, refreshToken: string, enabled = true): Promise<void> {
+  const client = getPool();
+  if (!client) {
+    throw new Error('database_url_not_configured');
+  }
+  await client.query(
+    `INSERT INTO autodraft_users (email, refresh_token, enabled)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (email) DO UPDATE
+       SET refresh_token = EXCLUDED.refresh_token,
+           enabled = EXCLUDED.enabled,
+           updated_at = now()`,
+    [email, refreshToken, enabled]
+  );
+  cachedToken = null;
+}

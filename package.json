@@ -5,6 +5,8 @@
   "scripts": {
     "start": "node dist/autodraft.js",
     "start:env": "cross-env ENV=company node dist/autodraft.js",
+    "auth": "tsx auth.ts",
+    "auth:prod": "node dist/auth.js",
     "dev": "tsx --watch autodraft.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc -p tsconfig.build.json",
@@ -24,11 +26,13 @@
     "axios": "^1.7.2",
     "better-sqlite3": "^9.6.0",
     "dotenv": "^16.5.0",
+    "express": "^5.2.1",
     "iconv-lite": "^0.6.3",
     "openai": "^4.52.7",
     "pg": "^8.13.1"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/pg": "^8.16.0",
     "cross-env": "^7.0.3",
     "tsx": "^4.20.3",

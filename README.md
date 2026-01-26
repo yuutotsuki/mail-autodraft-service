@@ -42,6 +42,33 @@ cp .env.example .env
 
 複数ユーザーのトークンをDBで管理する場合は `DATABASE_URL` を設定してください。
 
+## OAuth登録（マルチユーザー）
+
+ユーザー自身にGoogleログインしてもらい、refresh_token をDBに登録する最小フローです。
+
+### 必要な環境変数
+
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REDIRECT_URI`（例: `https://your-service.onrender.com/auth/callback`）
+- `OAUTH_SCOPES`（例: `openid email https://www.googleapis.com/auth/gmail.modify`）
+- `DATABASE_URL`（Postgres接続）
+
+### 起動
+
+```bash
+npm run build
+npm run auth:prod
+```
+
+### 使い方
+
+1. `/auth/start` にアクセス  
+2. Googleでログイン  
+3. `/auth/callback` が `登録完了` を表示  
+
+登録が完了すると `autodraft_users` に1行追加されます。
+
 ### 3) ビルド
 
 ```bash
