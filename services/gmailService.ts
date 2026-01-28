@@ -10,8 +10,8 @@ function encodeHeaderUtf8(value: string): string {
 }
 
 // Direct Gmail API draft creation. Uses gmail.modify scope.
-export async function createGmailDraftDirect(draft: DraftData) {
-  const accessToken = await getGoogleAccessTokenForScope('https://www.googleapis.com/auth/gmail.modify');
+export async function createGmailDraftDirect(draft: DraftData, accessTokenOverride?: string) {
+  const accessToken = accessTokenOverride || await getGoogleAccessTokenForScope('https://www.googleapis.com/auth/gmail.modify');
   const url = 'https://gmail.googleapis.com/gmail/v1/users/me/drafts';
   const subjectHeader = encodeHeaderUtf8(draft.subject || '');
   const lines = [

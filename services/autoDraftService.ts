@@ -7,9 +7,10 @@ import { createGmailDraftDirect } from './gmailService';
 import { logAction, hashUserId } from '../utils/actionLogger';
 import { generateTraceId } from '../utils/ids';
 import { getAutodraftState, upsertAutodraftState } from '../db/sqlite';
+import { getEnabledUsers } from '../db/postgres';
 import { getAutoDraftModel } from '../config/models';
 import { decodeMimeWords } from '../utils/mime';
-import { getGoogleAccessTokenForScope } from './googleTokenProvider';
+import { getGoogleAccessTokenForScope, getGoogleAccessTokenForRefreshToken } from './googleTokenProvider';
 
 function getEnvBool(name: string, def = false): boolean {
   const v = process.env[name];
@@ -105,11 +106,11 @@ const PROCESSED_LABEL = (process.env.AUTODRAFT_PROCESSED_LABEL || 'autodraft-pro
 const labelCache = new Map<string, string>();
 const gmailBase = 'https://gmail.googleapis.com/gmail/v1';
 
-async function ensureProcessedLabelId(): Promise<string | null> {
+async function ensureProcessedLabelId(accessTokenOverride?: string): Promise<string | null> {
   if (!PROCESSED_LABEL) return null;
   if (labelCache.has(PROCESSED_LABEL)) return labelCache.get(PROCESSED_LABEL)!;
   try {
-    const token = await getGoogleAccessTokenForScope('https://www.googleapis.com/auth/gmail.modify');
+    const token = accessTokenOverride || await getGoogleAccessTokenForScope('https://www.googleapis.com/auth/gmail.modify');
     const timeout = Number(process.env.GMAIL_API_TIMEOUT_MS || '8000');
     const headers = { Authorization: `Bearer ${token}` };
     const list = await axios.get(`${gmailBase}/users/me/labels`, { headers, timeout });
@@ -129,12 +130,12 @@ async function ensureProcessedLabelId(): Promise<string | null> {
   return null;
 }
 
-async function markMessageProcessed(messageId: string): Promise<void> {
+async function markMessageProcessed(messageId: string, accessTokenOverride?: string): Promise<void> {
   if (!PROCESSED_LABEL || !messageId) return;
   try {
-    const labelId = await ensureProcessedLabelId();
+    const labelId = await ensureProcessedLabelId(accessTokenOverride);
     if (!labelId) return;
-    const token = await getGoogleAccessTokenForScope('https://www.googleapis.com/auth/gmail.modify');
+    const token = accessTokenOverride || await getGoogleAccessTokenForScope('https://www.googleapis.com/auth/gmail.modify');
     const timeout = Number(process.env.GMAIL_API_TIMEOUT_MS || '8000');
     const headers = { Authorization: `Bearer ${token}` };
     await axios.post(`${gmailBase}/users/me/messages/${encodeURIComponent(messageId)}/modify`, {
@@ -314,9 +315,41 @@ export async function runAutoDraftOnce(): Promise<number> {
   if (PROCESSED_LABEL) qParts.push(`-label:${PROCESSED_LABEL}`);
   const q = qParts.join(' ');
   const limit = Number(process.env.AUTODRAFT_MAX_PER_POLL || '5');
+  const perUserSleepMs = Math.max(0, Number(process.env.AUTODRAFT_USER_SLEEP_MS || '2000'));
 
+  const enabledUsers = await getEnabledUsers();
+  if (enabledUsers.length > 0) {
+    let total = 0;
+    for (let i = 0; i < enabledUsers.length; i++) {
+      const u = enabledUsers[i];
+      const maskedEmail = u.email.replace(/(.{2}).+(@.+)/, '$1***$2');
+      try {
+        const token = await getGoogleAccessTokenForRefreshToken(
+          u.refresh_token,
+          'https://www.googleapis.com/auth/gmail.modify'
+        );
+        total += await runAutoDraftForToken(token, q, limit, maskedEmail);
+      } catch (e) {
+        console.warn('[autodraft] user failed', { user: maskedEmail, error: (e as any)?.message || e });
+      }
+      if (i < enabledUsers.length - 1 && perUserSleepMs > 0) {
+        await new Promise((r) => setTimeout(r, perUserSleepMs));
+      }
+    }
+    return total;
+  }
+
+  return await runAutoDraftForToken(undefined, q, limit);
+}
+
+async function runAutoDraftForToken(
+  accessToken: string | undefined,
+  q: string,
+  limit: number,
+  maskedEmail?: string
+): Promise<number> {
   // Fetch recent unread messages (metadata)
-  const { items } = await listGmailMessages({ limit: 20, q, labelIds: ['INBOX'] });
+  const { items } = await listGmailMessages({ limit: 20, q, labelIds: ['INBOX'] }, accessToken);
   const byThread = new Map<string, { latestId: string; subject?: string; from?: string }>();
   for (const it of items) {
     if (!it.threadId || !it.id) continue;
@@ -332,7 +365,7 @@ export async function runAutoDraftOnce(): Promise<number> {
       if (state && state.last_message_id === meta.latestId) continue; // already drafted for this head
       if (shouldSkipByHeuristics(meta.from, meta.subject)) continue;
 
-      const thread = await getGmailThread(threadId);
+      const thread = await getGmailThread(threadId, accessToken);
       const msgs = thread.messages;
       if (!Array.isArray(msgs) || msgs.length === 0) continue;
       const lastMsg = msgs[msgs.length - 1];
@@ -353,25 +386,25 @@ export async function runAutoDraftOnce(): Promise<number> {
       const t0 = Date.now();
       const body = await generateDraftBody(ctx, greeting);
       const draftPayload = { to: toAddr, subject, body, threadId, createdAt: Date.now() } as any;
-      await createGmailDraftDirect(draftPayload);
+      await createGmailDraftDirect(draftPayload, accessToken);
       drafted++;
-      try { await markMessageProcessed(meta.latestId); } catch (e) { console.warn('[autodraft] mark processed failed', e); }
+      try { await markMessageProcessed(meta.latestId, accessToken); } catch (e) { console.warn('[autodraft] mark processed failed', e); }
       try { upsertAutodraftState(threadId, meta.latestId); } catch {}
       try {
         logAction({
           route: 'gmail_autodraft',
           trace_id: generateTraceId('draft'),
           user_id_hashed: hashUserId('autodraft'),
-          params: { threadId, to: toAddr, subject, greeting },
+          params: { threadId, to: toAddr, subject, greeting, user: maskedEmail },
           count: 1,
-          source: 'responses',
+          source: 'direct',
           responses_ms: Date.now() - t0,
           result_summary: '下書きを自動作成',
           shadow: false,
         });
       } catch {}
     } catch (e) {
-      console.warn('[autodraft] failed for thread', threadId, e);
+      console.warn('[autodraft] failed for thread', { threadId, user: maskedEmail, error: (e as any)?.message || e });
     }
   }
   return drafted;

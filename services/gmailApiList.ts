@@ -35,9 +35,12 @@ function parseHeader(headers: Array<{ name: string; value: string }>, key: strin
   return h?.value;
 }
 
-export async function listGmailMessages(params: GmailListParams = {}): Promise<{ items: GmailListItem[]; api_ms: number }>
+export async function listGmailMessages(
+  params: GmailListParams = {},
+  accessTokenOverride?: string
+): Promise<{ items: GmailListItem[]; api_ms: number }>
 {
-  const accessToken = await getGoogleAccessToken();
+  const accessToken = accessTokenOverride || await getGoogleAccessToken();
   const base = 'https://gmail.googleapis.com/gmail/v1';
   const limit = Math.max(1, Math.min(50, Number(process.env.GMAIL_LIST_LIMIT || params.limit || 8)));
   const timeout = Number(process.env.GMAIL_API_TIMEOUT_MS || '6000');
@@ -89,11 +92,11 @@ export async function listGmailMessages(params: GmailListParams = {}): Promise<{
 }
 
 // Fetch a full Gmail thread and return lightweight normalized messages
-export async function getGmailThread(threadId: string): Promise<{
+export async function getGmailThread(threadId: string, accessTokenOverride?: string): Promise<{
   id: string;
   messages: Array<{ id: string; subject?: string; from?: string; to?: string; date?: string; text?: string }>;
 }> {
-  const accessToken = await getGoogleAccessToken();
+  const accessToken = accessTokenOverride || await getGoogleAccessToken();
   const base = 'https://gmail.googleapis.com/gmail/v1';
   const r = await axios.get(`${base}/users/me/threads/${encodeURIComponent(threadId)}`, {
     headers: { Authorization: `Bearer ${accessToken}` },

@@ -49,6 +49,26 @@ export async function getEnabledUserToken(): Promise<{ email: string; refresh_to
   }
 }
 
+export async function getEnabledUsers(): Promise<Array<{ email: string; refresh_token: string }>> {
+  const url = process.env.DATABASE_URL;
+  if (!url) return [];
+  const client = getPool();
+  if (!client) return [];
+  try {
+    const res = await client.query(
+      `SELECT email, refresh_token
+         FROM autodraft_users
+        WHERE enabled = true
+        ORDER BY created_at ASC`
+    );
+    return (res.rows || []).filter((r: any) => r?.email && r?.refresh_token);
+  } catch (e: any) {
+    const message = e?.message || e?.code || e;
+    console.warn('[db] failed to list autodraft_users', message);
+    return [];
+  }
+}
+
 export async function upsertAutodraftUser(email: string, refreshToken: string, enabled = true): Promise<void> {
   const client = getPool();
   if (!client) {

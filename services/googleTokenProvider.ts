@@ -59,20 +59,10 @@ async function fetchFromTokenServer(scopeOverride?: string): Promise<TokenInfo |
   return null;
 }
 
-async function fetchFromRefreshToken(): Promise<TokenInfo | null> {
+async function exchangeRefreshToken(refresh: string, scopeOverride?: string): Promise<TokenInfo | null> {
   const cid = process.env.GOOGLE_CLIENT_ID;
   const secret = process.env.GOOGLE_CLIENT_SECRET;
-  let refresh = process.env.GOOGLE_REFRESH_TOKEN;
-  if (!cid || !secret) return null;
-  if (!refresh) {
-    try {
-      const dbToken = await getEnabledUserToken();
-      if (dbToken?.refresh_token) {
-        refresh = dbToken.refresh_token;
-      }
-    } catch {}
-  }
-  if (!refresh) return null;
+  if (!cid || !secret || !refresh) return null;
   try {
     const params = new URLSearchParams();
     params.set('client_id', cid);
@@ -80,7 +70,8 @@ async function fetchFromRefreshToken(): Promise<TokenInfo | null> {
     params.set('refresh_token', refresh);
     params.set('grant_type', 'refresh_token');
     // scope is optional for refresh grants; omit unless provided
-    if (process.env.TOKEN_SERVER_SCOPE) params.set('scope', process.env.TOKEN_SERVER_SCOPE);
+    const scope = scopeOverride || process.env.TOKEN_SERVER_SCOPE;
+    if (scope) params.set('scope', scope);
     const r = await axios.post('https://oauth2.googleapis.com/token', params.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       timeout: Number(process.env.GMAIL_API_TIMEOUT_MS || '6000'),
@@ -97,6 +88,28 @@ async function fetchFromRefreshToken(): Promise<TokenInfo | null> {
     console.warn('[googleToken] refresh-token flow failed', { status, code, message });
   }
   return null;
+}
+
+export async function getGoogleAccessTokenForRefreshToken(refreshToken: string, scope?: string): Promise<string> {
+  const info = await exchangeRefreshToken(refreshToken, scope);
+  if (!info || !isValid(info)) {
+    throw new Error('google_access_token_unavailable_for_refresh_token');
+  }
+  return info.access_token;
+}
+
+async function fetchFromRefreshToken(scopeOverride?: string): Promise<TokenInfo | null> {
+  let refresh = process.env.GOOGLE_REFRESH_TOKEN;
+  if (!refresh) {
+    try {
+      const dbToken = await getEnabledUserToken();
+      if (dbToken?.refresh_token) {
+        refresh = dbToken.refresh_token;
+      }
+    } catch {}
+  }
+  if (!refresh) return null;
+  return await exchangeRefreshToken(refresh, scopeOverride);
 }
 
 export async function getGoogleAccessToken(): Promise<string> {

@@ -92,6 +92,7 @@ npm start
 - `AUTODRAFT_REQUIRE_ALLOW_LABEL=true`
 - `AUTODRAFT_ALLOW_LABEL_NAME=ai-draft-allow`（任意）
 - `AUTODRAFT_EXCLUDE_PROMOTIONS=true`
+- `AUTODRAFT_USER_SLEEP_MS=2000`（ユーザー間の待機）
 
 ### 許可ラベル運用
 
