@@ -106,9 +106,10 @@ const PROCESSED_LABEL = (process.env.AUTODRAFT_PROCESSED_LABEL || 'autodraft-pro
 const labelCache = new Map<string, string>();
 const gmailBase = 'https://gmail.googleapis.com/gmail/v1';
 
-async function ensureProcessedLabelId(accessTokenOverride?: string): Promise<string | null> {
+async function ensureProcessedLabelId(accessTokenOverride?: string, cacheKey?: string): Promise<string | null> {
   if (!PROCESSED_LABEL) return null;
-  if (labelCache.has(PROCESSED_LABEL)) return labelCache.get(PROCESSED_LABEL)!;
+  const key = cacheKey || PROCESSED_LABEL;
+  if (labelCache.has(key)) return labelCache.get(key)!;
   try {
     const token = accessTokenOverride || await getGoogleAccessTokenForScope('https://www.googleapis.com/auth/gmail.modify');
     const timeout = Number(process.env.GMAIL_API_TIMEOUT_MS || '8000');
@@ -116,12 +117,12 @@ async function ensureProcessedLabelId(accessTokenOverride?: string): Promise<str
     const list = await axios.get(`${gmailBase}/users/me/labels`, { headers, timeout });
     const found = (list.data?.labels || []).find((l: any) => l?.name === PROCESSED_LABEL);
     if (found?.id) {
-      labelCache.set(PROCESSED_LABEL, found.id);
+      labelCache.set(key, found.id);
       return found.id;
     }
     const created = await axios.post(`${gmailBase}/users/me/labels`, { name: PROCESSED_LABEL }, { headers, timeout });
     if (created.data?.id) {
-      labelCache.set(PROCESSED_LABEL, created.data.id);
+      labelCache.set(key, created.data.id);
       return created.data.id;
     }
   } catch (e: any) {
@@ -130,10 +131,10 @@ async function ensureProcessedLabelId(accessTokenOverride?: string): Promise<str
   return null;
 }
 
-async function markMessageProcessed(messageId: string, accessTokenOverride?: string): Promise<void> {
+async function markMessageProcessed(messageId: string, accessTokenOverride?: string, cacheKey?: string): Promise<void> {
   if (!PROCESSED_LABEL || !messageId) return;
   try {
-    const labelId = await ensureProcessedLabelId(accessTokenOverride);
+    const labelId = await ensureProcessedLabelId(accessTokenOverride, cacheKey);
     if (!labelId) return;
     const token = accessTokenOverride || await getGoogleAccessTokenForScope('https://www.googleapis.com/auth/gmail.modify');
     const timeout = Number(process.env.GMAIL_API_TIMEOUT_MS || '8000');
@@ -388,7 +389,7 @@ async function runAutoDraftForToken(
       const draftPayload = { to: toAddr, subject, body, threadId, createdAt: Date.now() } as any;
       await createGmailDraftDirect(draftPayload, accessToken);
       drafted++;
-      try { await markMessageProcessed(meta.latestId, accessToken); } catch (e) { console.warn('[autodraft] mark processed failed', e); }
+      try { await markMessageProcessed(meta.latestId, accessToken, maskedEmail || accessToken); } catch (e) { console.warn('[autodraft] mark processed failed', e); }
       try { upsertAutodraftState(threadId, meta.latestId); } catch {}
       try {
         logAction({
