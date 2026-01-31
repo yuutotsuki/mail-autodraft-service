@@ -30,3 +30,10 @@ __pycache__/
 
 # Generated textual memories
 memory/**/textual_memory.json
+
+# Windows Zone.Identifier alternate data streams
+*:Zone.Identifier
+*.Zone.Identifier
+
+# macOS metadata
+.DS_Store
