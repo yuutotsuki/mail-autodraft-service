@@ -69,6 +69,73 @@ export async function getEnabledUsers(): Promise<Array<{ email: string; refresh_
   }
 }
 
+export async function getAutodraftUserCount(): Promise<number> {
+  const url = process.env.DATABASE_URL;
+  if (!url) return 0;
+  const client = getPool();
+  if (!client) return 0;
+  try {
+    const res = await client.query('SELECT COUNT(*) AS count FROM autodraft_users');
+    const count = Number(res.rows?.[0]?.count || 0);
+    return Number.isFinite(count) ? count : 0;
+  } catch (e: any) {
+    const message = e?.message || e?.code || e;
+    console.warn('[db] failed to count autodraft_users', message);
+    return 0;
+  }
+}
+
+export async function getAutodraftUserByEmail(email: string): Promise<{ email: string; enabled: boolean } | null> {
+  const url = process.env.DATABASE_URL;
+  if (!url) return null;
+  const client = getPool();
+  if (!client) return null;
+  try {
+    const res = await client.query(
+      `SELECT email, enabled
+         FROM autodraft_users
+        WHERE email = $1
+        LIMIT 1`,
+      [email]
+    );
+    const row = res.rows?.[0];
+    if (!row?.email) return null;
+    return { email: row.email, enabled: Boolean(row.enabled) };
+  } catch (e: any) {
+    const message = e?.message || e?.code || e;
+    console.warn('[db] failed to read autodraft_users by email', message);
+    return null;
+  }
+}
+
+export async function updateAutodraftUserEnabled(email: string, enabled: boolean): Promise<void> {
+  const client = getPool();
+  if (!client) {
+    throw new Error('database_url_not_configured');
+  }
+  await client.query(
+    `UPDATE autodraft_users
+        SET enabled = $2,
+            updated_at = now()
+      WHERE email = $1`,
+    [email, enabled]
+  );
+  cachedToken = null;
+}
+
+export async function disconnectAutodraftUser(email: string): Promise<void> {
+  const client = getPool();
+  if (!client) {
+    throw new Error('database_url_not_configured');
+  }
+  await client.query(
+    `DELETE FROM autodraft_users
+      WHERE email = $1`,
+    [email]
+  );
+  cachedToken = null;
+}
+
 export async function upsertAutodraftUser(email: string, refreshToken: string, enabled = true): Promise<void> {
   const client = getPool();
   if (!client) {
