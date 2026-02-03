@@ -165,6 +165,7 @@ function renderSettingsPage(params: { email: string; enabled: boolean; message?:
       <div class="danger-note">この操作は取り消せません。再開するには再度Googleで接続が必要です。</div>
     </form>
     <div class="note">反映には数分かかることがあります。</div>
+    <div class="note">下書の対象は<strong>直近3日以内</strong>の未読メールのみです。</div>
   </div>
 </body>
 </html>`;
