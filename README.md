@@ -51,7 +51,7 @@ cp .env.example .env
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_REDIRECT_URI`（例: `https://your-service.onrender.com/auth/callback`）
-- `OAUTH_SCOPES`（例: `openid email https://www.googleapis.com/auth/gmail.modify`）
+- `OAUTH_SCOPES`（例: `openid email https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.settings.basic`）
 - `DATABASE_URL`（Postgres接続）
 
 ### 起動
@@ -68,6 +68,16 @@ npm run auth:prod
 3. `/auth/callback` が `登録完了` を表示  
 
 登録が完了すると `autodraft_users` に1行追加されます。
+
+### 設定ページで切り替えできる項目
+
+OAuth登録後に表示される設定ページから、ユーザーごとに次を切り替えできます。
+
+- 下書き自動作成の ON / OFF
+- `ai-draft-allow` ラベル必須の ON / OFF
+
+`ai-draft-allow` ラベル必須を OFF にすると、
+ラベルなしの未読メールも下書き対象になります（他の除外条件は維持）。
 
 ### 3) ビルド
 
@@ -93,11 +103,23 @@ npm start
 - `AUTODRAFT_ALLOW_LABEL_NAME=ai-draft-allow`（任意）
 - `AUTODRAFT_EXCLUDE_PROMOTIONS=true`
 - `AUTODRAFT_USER_SLEEP_MS=2000`（ユーザー間の待機）
+- `AUTODRAFT_USE_GMAIL_SIGNATURE=true`（Google署名を自動取り込み）
 
 ### 許可ラベル運用
 
 `AUTODRAFT_REQUIRE_ALLOW_LABEL=true` の場合、
 **許可ラベルが付いている未読メールのみ**が自動下書き対象になります。
+
+マルチユーザー運用時は、設定ページの切り替え値（ユーザー別設定）が優先されます。
+
+### 署名について
+
+Gmail API で作成した下書きには、Web/アプリの「署名を自動挿入」設定がそのまま反映されない場合があります。  
+このサービスでは `AUTODRAFT_USE_GMAIL_SIGNATURE=true` のとき、Gmail の送信者設定から署名を取得して本文末尾に付与します。
+
+- 署名取得には `gmail.settings.basic` スコープが必要です
+- 既存ユーザーのトークンにこのスコープがない場合は、`/auth/start` から再連携してください
+- 取得できない場合は `AUTODRAFT_SIGNATURE`（固定署名）を利用します
 
 ## 安全設計
 

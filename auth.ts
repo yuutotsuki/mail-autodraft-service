@@ -8,6 +8,7 @@ import {
   getAutodraftUserCount,
   getAutodraftUserByEmail,
   updateAutodraftUserEnabled,
+  updateAutodraftUserRequireAllowLabel,
   upsertAutodraftUser,
 } from './db/postgres';
 
@@ -20,7 +21,7 @@ const clientId = process.env.GOOGLE_CLIENT_ID || '';
 const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
 const redirectUri = process.env.GOOGLE_REDIRECT_URI || '';
 const scopes = (process.env.OAUTH_SCOPES
-  || 'openid email https://www.googleapis.com/auth/gmail.modify').trim();
+  || 'openid email https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.settings.basic').trim();
 const stateTtlMs = Number(process.env.OAUTH_STATE_TTL_SEC || '600') * 1000;
 
 const stateStore = new Map<string, number>();
@@ -40,12 +41,30 @@ function consumeSettingsToken(token: string): string | null {
   return entry.email;
 }
 
-function renderSettingsPage(params: { email: string; enabled: boolean; message?: string; token: string }): string {
-  const { email, enabled, message, token } = params;
+function getEnvBool(name: string, def = false): boolean {
+  const v = process.env[name];
+  if (v == null) return def;
+  return /^(1|true|yes|on)$/i.test(v);
+}
+
+function renderSettingsPage(params: {
+  email: string;
+  enabled: boolean;
+  requireAllowLabel: boolean;
+  message?: string;
+  token: string;
+}): string {
+  const { email, enabled, requireAllowLabel, message, token } = params;
   const statusLabel = enabled ? 'ON' : 'OFF';
   const statusText = enabled ? '下書き自動作成は有効です' : '下書き自動作成は停止中です';
   const buttonText = enabled ? '停止する' : '再開する';
   const nextEnabled = enabled ? 'false' : 'true';
+  const allowStatusLabel = requireAllowLabel ? 'ON' : 'OFF';
+  const allowStatusText = requireAllowLabel
+    ? 'ai-draft-allow ラベル付きメールのみ対象'
+    : 'ラベルなしでも未読メールを対象';
+  const allowButtonText = requireAllowLabel ? 'ラベル必須をOFFにする' : 'ラベル必須をONにする';
+  const nextRequireAllowLabel = requireAllowLabel ? 'false' : 'true';
   return `<!doctype html>
 <html lang="ja">
 <head>
@@ -153,11 +172,22 @@ function renderSettingsPage(params: { email: string; enabled: boolean; message?:
       <span class="pill">${statusLabel}</span>
       <div>${statusText}</div>
     </div>
+    <div class="status">
+      <span class="pill">${allowStatusLabel}</span>
+      <div>${allowStatusText}</div>
+    </div>
     ${message ? `<div class="message">${message}</div>` : ''}
     <form method="post" action="/settings">
       <input type="hidden" name="token" value="${token}" />
-      <input type="hidden" name="enabled" value="${nextEnabled}" />
+      <input type="hidden" name="mode" value="enabled" />
+      <input type="hidden" name="value" value="${nextEnabled}" />
       <button type="submit">${buttonText}</button>
+    </form>
+    <form method="post" action="/settings">
+      <input type="hidden" name="token" value="${token}" />
+      <input type="hidden" name="mode" value="require_allow_label" />
+      <input type="hidden" name="value" value="${nextRequireAllowLabel}" />
+      <button type="submit">${allowButtonText}</button>
     </form>
     <form method="post" action="/settings/disconnect">
       <input type="hidden" name="token" value="${token}" />
@@ -754,12 +784,14 @@ app.get('/auth/callback', async (req, res) => {
       }
     }
 
-    await upsertAutodraftUser(email, refreshToken, true);
+    const defaultRequireAllowLabel = getEnvBool('AUTODRAFT_REQUIRE_ALLOW_LABEL', true);
+    await upsertAutodraftUser(email, refreshToken, true, defaultRequireAllowLabel);
     const user = await getAutodraftUserByEmail(email);
     const enabled = user?.enabled ?? true;
+    const requireAllowLabel = user?.require_allow_label ?? defaultRequireAllowLabel;
     const token = buildSettingsToken(email);
     res.status(200).type('html').send(
-      renderSettingsPage({ email, enabled, token, message: '登録が完了しました。' })
+      renderSettingsPage({ email, enabled, requireAllowLabel, token, message: '登録が完了しました。' })
     );
   } catch (e: any) {
     const status = e?.response?.status || 500;
@@ -770,19 +802,33 @@ app.get('/auth/callback', async (req, res) => {
 
 app.post('/settings', async (req, res) => {
   const token = String(req.body?.token || '').trim();
-  const enabledRaw = String(req.body?.enabled || '').trim().toLowerCase();
-  const enabled = enabledRaw === 'true';
+  const legacyEnabledRaw = String(req.body?.enabled || '').trim().toLowerCase();
+  const mode = String(req.body?.mode || '').trim() || (legacyEnabledRaw ? 'enabled' : '');
+  const valueRaw = String(req.body?.value || '').trim().toLowerCase() || legacyEnabledRaw;
+  const value = valueRaw === 'true';
   const email = token ? consumeSettingsToken(token) : null;
   if (!email) {
     res.status(400).send('設定トークンが無効です。もう一度 /auth/start からやり直してください。');
     return;
   }
   try {
-    await updateAutodraftUserEnabled(email, enabled);
+    if (mode === 'enabled') {
+      await updateAutodraftUserEnabled(email, value);
+    } else if (mode === 'require_allow_label') {
+      await updateAutodraftUserRequireAllowLabel(email, value);
+    } else {
+      res.status(400).send('不正な設定モードです。');
+      return;
+    }
+    const user = await getAutodraftUserByEmail(email);
+    const enabled = user?.enabled ?? true;
+    const requireAllowLabel = user?.require_allow_label ?? getEnvBool('AUTODRAFT_REQUIRE_ALLOW_LABEL', true);
     const tokenNext = buildSettingsToken(email);
-    const message = enabled ? '下書き自動作成を再開しました。' : '下書き自動作成を停止しました。';
+    const message = mode === 'enabled'
+      ? (enabled ? '下書き自動作成を再開しました。' : '下書き自動作成を停止しました。')
+      : (requireAllowLabel ? 'ラベル必須をONにしました。' : 'ラベル必須をOFFにしました。');
     res.status(200).type('html').send(
-      renderSettingsPage({ email, enabled, token: tokenNext, message })
+      renderSettingsPage({ email, enabled, requireAllowLabel, token: tokenNext, message })
     );
   } catch (e: any) {
     const message = e?.message || 'failed';

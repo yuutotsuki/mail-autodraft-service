@@ -3,7 +3,7 @@ import axios from 'axios';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { getGmailThread, listGmailMessages } from './gmailApiList';
-import { createGmailDraftDirect } from './gmailService';
+import { createGmailDraftDirect, getGmailPrimarySignatureText } from './gmailService';
 import { logAction, hashUserId } from '../utils/actionLogger';
 import { generateTraceId } from '../utils/ids';
 import { getAutodraftState, upsertAutodraftState } from '../db/sqlite';
@@ -253,8 +253,8 @@ function buildUserPrompt(threadText: string, greeting?: string): string {
 
 function getOpenAIClient(): OpenAI { return new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); }
 
-function appendSignature(body: string): string {
-  const signatureRaw = process.env.AUTODRAFT_SIGNATURE;
+function appendSignature(body: string, signatureOverride?: string): string {
+  const signatureRaw = signatureOverride ?? process.env.AUTODRAFT_SIGNATURE;
   if (!signatureRaw) return body;
   const normalizedSignature = signatureRaw
     .replace(/\r\n/g, '\n')
@@ -280,7 +280,7 @@ function ensureGreeting(body: string, greeting?: string): string {
   return `${normalizedGreeting}\n\n${strippedBody}`;
 }
 
-async function generateDraftBody(threadText: string, greeting?: string): Promise<string> {
+async function generateDraftBody(threadText: string, greeting?: string, signature?: string): Promise<string> {
   const client = getOpenAIClient();
   const model = getAutoDraftModel();
   const sys = getSystemPrompt();
@@ -297,24 +297,26 @@ async function generateDraftBody(threadText: string, greeting?: string): Promise
   const text = ((resp as any).output_text || '').toString();
   const body = text.trim();
   const withGreeting = ensureGreeting(body, greeting);
-  return appendSignature(withGreeting);
+  return appendSignature(withGreeting, signature);
 }
 
 
 export async function runAutoDraftOnce(): Promise<number> {
   // Build Gmail search query
   const lookback = process.env.AUTODRAFT_LOOKBACK || '1d';
-  const requireAllowLabel = getEnvBool('AUTODRAFT_REQUIRE_ALLOW_LABEL', false);
+  const defaultRequireAllowLabel = getEnvBool('AUTODRAFT_REQUIRE_ALLOW_LABEL', true);
   const allowLabel = (process.env.AUTODRAFT_ALLOW_LABEL_NAME || 'ai-draft-allow').trim();
-  if (requireAllowLabel && !allowLabel) {
+  if (defaultRequireAllowLabel && !allowLabel) {
     console.warn('[autodraft] require allow-label is enabled but AUTODRAFT_ALLOW_LABEL_NAME is empty; skipping');
     return 0;
   }
-  const qParts = [`in:inbox`, `is:unread`, `newer_than:${lookback}`];
-  if (requireAllowLabel && allowLabel) qParts.push(`label:${allowLabel}`);
-  if (getEnvBool('AUTODRAFT_EXCLUDE_PROMOTIONS', true)) qParts.push('-category:promotions');
-  if (PROCESSED_LABEL) qParts.push(`-label:${PROCESSED_LABEL}`);
-  const q = qParts.join(' ');
+  const buildQuery = (requireAllowLabel: boolean): string => {
+    const qParts = [`in:inbox`, `is:unread`, `newer_than:${lookback}`];
+    if (requireAllowLabel && allowLabel) qParts.push(`label:${allowLabel}`);
+    if (getEnvBool('AUTODRAFT_EXCLUDE_PROMOTIONS', true)) qParts.push('-category:promotions');
+    if (PROCESSED_LABEL) qParts.push(`-label:${PROCESSED_LABEL}`);
+    return qParts.join(' ');
+  };
   const limit = Number(process.env.AUTODRAFT_MAX_PER_POLL || '5');
   const perUserSleepMs = Math.max(0, Number(process.env.AUTODRAFT_USER_SLEEP_MS || '2000'));
 
@@ -329,6 +331,11 @@ export async function runAutoDraftOnce(): Promise<number> {
           u.refresh_token,
           'https://www.googleapis.com/auth/gmail.modify'
         );
+        if (u.require_allow_label && !allowLabel) {
+          console.warn('[autodraft] require allow-label is enabled but AUTODRAFT_ALLOW_LABEL_NAME is empty; skipping user', { user: maskedEmail });
+          continue;
+        }
+        const q = buildQuery(u.require_allow_label);
         total += await runAutoDraftForToken(token, q, limit, maskedEmail);
       } catch (e) {
         console.warn('[autodraft] user failed', { user: maskedEmail, error: (e as any)?.message || e });
@@ -340,6 +347,7 @@ export async function runAutoDraftOnce(): Promise<number> {
     return total;
   }
 
+  const q = buildQuery(defaultRequireAllowLabel);
   return await runAutoDraftForToken(undefined, q, limit);
 }
 
@@ -349,6 +357,11 @@ async function runAutoDraftForToken(
   limit: number,
   maskedEmail?: string
 ): Promise<number> {
+  const useGmailSignature = getEnvBool('AUTODRAFT_USE_GMAIL_SIGNATURE', true);
+  const gmailSignature = useGmailSignature
+    ? await getGmailPrimarySignatureText(accessToken)
+    : undefined;
+
   // Fetch recent unread messages (metadata)
   const { items } = await listGmailMessages({ limit: 20, q, labelIds: ['INBOX'] }, accessToken);
   const byThread = new Map<string, { latestId: string; subject?: string; from?: string }>();
@@ -385,7 +398,7 @@ async function runAutoDraftForToken(
       const displayName = extractDisplayName(lastMsg.from) || extractDisplayName(meta.from);
       const greeting = buildRecipientGreeting(displayName);
       const t0 = Date.now();
-      const body = await generateDraftBody(ctx, greeting);
+      const body = await generateDraftBody(ctx, greeting, gmailSignature);
       const draftPayload = { to: toAddr, subject, body, threadId, createdAt: Date.now() } as any;
       await createGmailDraftDirect(draftPayload, accessToken);
       drafted++;
