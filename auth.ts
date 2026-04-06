@@ -47,6 +47,120 @@ function getEnvBool(name: string, def = false): boolean {
   return /^(1|true|yes|on)$/i.test(v);
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getIncidentNoticeConfig() {
+  const enabled = getEnvBool('NOTICE_ENABLED', false);
+  const title = (process.env.NOTICE_TITLE || '重要なお知らせ').trim();
+  const message = (process.env.NOTICE_MESSAGE || '現在、一部機能に不具合を確認しています。復旧までしばらくお待ちください。')
+    .replace(/\r\n/g, '\n')
+    .replace(/\\n/g, '\n');
+  const allowContinue = getEnvBool('NOTICE_ALLOW_CONTINUE', true);
+  return { enabled, title, message, allowContinue };
+}
+
+function renderIncidentNoticePage(): string {
+  const notice = getIncidentNoticeConfig();
+  const lines = notice.message
+    .split('\n')
+    .map((line) => `<p>${escapeHtml(line)}</p>`)
+    .join('');
+  const continueButton = notice.allowContinue
+    ? '<a class="continue" href="/auth/start?continue=1">承知して連携を続ける</a>'
+    : '';
+  return `<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(notice.title)} | つきのーと</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Hiragino Kaku Gothic ProN", "Meiryo", "Avenir Next", sans-serif;
+      background: #fff6f6;
+      color: #2b1f2a;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .card {
+      width: min(680px, 100%);
+      background: #fff;
+      border-radius: 20px;
+      padding: 28px 24px;
+      box-shadow: 0 16px 50px rgba(194, 58, 95, 0.18);
+      border: 1px solid rgba(194, 58, 95, 0.08);
+    }
+    h1 { margin: 0 0 14px; font-size: 26px; }
+    p { margin: 10px 0; color: #4b3f47; line-height: 1.8; }
+    .meta { margin-top: 16px; font-size: 12px; color: #8f2745; }
+    .actions {
+      margin-top: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 18px;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .top { background: #f8dbe6; color: #8f2745; }
+    .continue {
+      background: linear-gradient(135deg, #c23a5f 0%, #e04f77 100%);
+      color: #fff;
+      box-shadow: 0 12px 26px rgba(194, 58, 95, 0.28);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>${escapeHtml(notice.title)}</h1>
+    ${lines}
+    <div class="meta">このお知らせは運営側で更新されます。</div>
+    <div class="actions">
+      <a class="top" href="/?continue=1">トップへ戻る</a>
+      ${continueButton}
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function renderInlineNoticeOnLanding(): string {
+  const notice = getIncidentNoticeConfig();
+  if (!notice.enabled) return '';
+  const lines = notice.message
+    .split('\n')
+    .map((line) => `<p>${escapeHtml(line)}</p>`)
+    .join('');
+  const stateLabel = notice.allowContinue ? '連携は続行できます' : '連携は一時停止中です';
+  return `
+    <section class="inline-notice" role="status" aria-live="polite">
+      <div class="inline-notice-head">
+        <strong>${escapeHtml(notice.title)}</strong>
+        <span class="inline-notice-pill">${stateLabel}</span>
+      </div>
+      <div class="inline-notice-body">
+        ${lines}
+      </div>
+    </section>
+  `;
+}
+
 function renderSettingsPage(params: {
   email: string;
   enabled: boolean;
@@ -307,6 +421,50 @@ const landingHtml = `<!doctype html>
     header {
       position: relative;
       z-index: 1;
+    }
+
+    .inline-notice {
+      position: relative;
+      z-index: 1;
+      margin-top: 16px;
+      background: #fff;
+      border: 1px solid rgba(194, 58, 95, 0.2);
+      border-radius: 16px;
+      padding: 14px 16px;
+      box-shadow: 0 10px 28px rgba(194, 58, 95, 0.12);
+      font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+    }
+
+    .inline-notice-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--accent-dark);
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .inline-notice-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(194, 58, 95, 0.12);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent-dark);
+    }
+
+    .inline-notice-body p {
+      margin: 0;
+      color: #4b3f47;
+      line-height: 1.7;
+      font-size: 13px;
+    }
+
+    .inline-notice-body p + p {
+      margin-top: 4px;
     }
 
     .brand {
@@ -599,6 +757,7 @@ const landingHtml = `<!doctype html>
         Moon AI Studio
       </div>
     </header>
+    __INLINE_NOTICE__
 
     <main class="hero">
       <section>
@@ -706,10 +865,21 @@ function validateConfig(): string | null {
 app.use('/assets', express.static(path.join(process.cwd(), 'assets')));
 
 app.get('/', (_req, res) => {
-  res.status(200).type('html').send(landingHtml);
+  const html = landingHtml.replace('__INLINE_NOTICE__', renderInlineNoticeOnLanding());
+  res.status(200).type('html').send(html);
 });
 
-app.get('/auth/start', (_req, res) => {
+app.get('/notice', (_req, res) => {
+  res.status(200).type('html').send(renderIncidentNoticePage());
+});
+
+app.get('/auth/start', (req, res) => {
+  const continueRequested = String(req.query?.continue || '').trim() === '1';
+  const notice = getIncidentNoticeConfig();
+  if (notice.enabled && !notice.allowContinue && !continueRequested) {
+    res.redirect('/notice');
+    return;
+  }
   const err = validateConfig();
   if (err) {
     res.status(500).send(err);
