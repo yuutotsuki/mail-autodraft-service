@@ -104,6 +104,8 @@ npm start
 - `AUTODRAFT_EXCLUDE_PROMOTIONS=true`
 - `AUTODRAFT_USER_SLEEP_MS=2000`（ユーザー間の待機）
 - `AUTODRAFT_USE_GMAIL_SIGNATURE=true`（Google署名を自動取り込み）
+- `AUTODRAFT_MARK_PROCESSED_LABEL=false`（通知維持のため既定OFF）
+- `AUTODRAFT_APPEND_ORIGINAL_QUOTE=true`（受信メール本文の引用を末尾に付与）
 
 ### 許可ラベル運用
 
@@ -125,7 +127,8 @@ Gmail API で作成した下書きには、Web/アプリの「署名を自動挿
 
 - **送信はしません**（Gmail下書きのみ作成）
 - プロモーションカテゴリは対象外
-- 同じメールでの再生成を防ぐため `autodraft-processed` ラベルを付与
+- 同じメールでの再生成を防ぐため、`autodraft_processed` テーブルで処理済み状態を管理
+- 必要な場合のみ `AUTODRAFT_MARK_PROCESSED_LABEL=true` で `autodraft-processed` ラベル付与を有効化
 
 ## 注意
 

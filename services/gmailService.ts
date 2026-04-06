@@ -62,6 +62,8 @@ export async function createGmailDraftDirect(draft: DraftData, accessTokenOverri
   const lines = [
     `To: ${draft.to || ''}`,
     `Subject: ${subjectHeader}`,
+    ...(draft.inReplyToMessageId ? [`In-Reply-To: ${draft.inReplyToMessageId}`] : []),
+    ...(draft.references ? [`References: ${draft.references}`] : []),
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: 8bit',
     'MIME-Version: 1.0',

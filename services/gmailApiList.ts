@@ -94,7 +94,16 @@ export async function listGmailMessages(
 // Fetch a full Gmail thread and return lightweight normalized messages
 export async function getGmailThread(threadId: string, accessTokenOverride?: string): Promise<{
   id: string;
-  messages: Array<{ id: string; subject?: string; from?: string; to?: string; date?: string; text?: string }>;
+  messages: Array<{
+    id: string;
+    subject?: string;
+    from?: string;
+    to?: string;
+    date?: string;
+    text?: string;
+    messageIdHeader?: string;
+    references?: string;
+  }>;
 }> {
   const accessToken = accessTokenOverride || await getGoogleAccessToken();
   const base = 'https://gmail.googleapis.com/gmail/v1';
@@ -140,12 +149,14 @@ export async function getGmailThread(threadId: string, accessTokenOverride?: str
     const from = decodeMimeWords(rawFrom);
     const rawTo = parseHeader(headers, 'To') || '';
     const to = decodeMimeWords(rawTo);
+    const messageIdHeader = parseHeader(headers, 'Message-ID') || parseHeader(headers, 'Message-Id');
+    const references = parseHeader(headers, 'References');
     maybeLogMime('thread.subject', rawSubject, subject);
     maybeLogMime('thread.from', rawFrom, from);
     maybeLogMime('thread.to', rawTo, to);
     const date = parseHeader(headers, 'Date');
     const text = decodeBody(payload) || m.snippet || '';
-    return { id: m.id as string, subject, from, to, date, text };
+    return { id: m.id as string, subject, from, to, date, text, messageIdHeader, references };
   });
   return { id: String(data.id || threadId), messages: out };
 }

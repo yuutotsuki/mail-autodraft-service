@@ -18,6 +18,15 @@ function getEnvBool(name: string, def = false): boolean {
   return /^(1|true|yes|on)$/i.test(v);
 }
 
+function shouldMarkProcessedLabel(): boolean {
+  // Default OFF: adding labels to unread mail can clear Gmail notifications on some clients.
+  return getEnvBool('AUTODRAFT_MARK_PROCESSED_LABEL', false);
+}
+
+function shouldAppendOriginalQuote(): boolean {
+  return getEnvBool('AUTODRAFT_APPEND_ORIGINAL_QUOTE', true);
+}
+
 function extractDisplayName(addr?: string): string | undefined {
   if (!addr) return undefined;
   const primary = String(addr).split(',')[0]; // handle multi-address but take the first
@@ -280,6 +289,22 @@ function ensureGreeting(body: string, greeting?: string): string {
   return `${normalizedGreeting}\n\n${strippedBody}`;
 }
 
+function buildOriginalQuoteBlock(lastMsg: { from?: string; date?: string; text?: string }): string | undefined {
+  const rawText = (lastMsg.text || '').replace(/\r\n/g, '\n').trim();
+  if (!rawText) return undefined;
+  const compactText = rawText.split('\n').slice(0, 120).join('\n').trim();
+  if (!compactText) return undefined;
+  const headerBits = [lastMsg.date?.trim(), lastMsg.from?.trim()].filter(Boolean) as string[];
+  const header = headerBits.length > 0 ? `${headerBits.join(' ')}:` : '--- 受信メール ---';
+  return `${header}\n${compactText}`;
+}
+
+function appendOriginalQuote(body: string, quoteBlock?: string): string {
+  if (!quoteBlock) return body;
+  const trimmed = body.replace(/[\s\u00A0]+$/u, '');
+  return `${trimmed}\n\n${quoteBlock}`;
+}
+
 async function generateDraftBody(threadText: string, greeting?: string, signature?: string): Promise<string> {
   const client = getOpenAIClient();
   const model = getAutoDraftModel();
@@ -314,7 +339,7 @@ export async function runAutoDraftOnce(): Promise<number> {
     const qParts = [`in:inbox`, `is:unread`, `newer_than:${lookback}`];
     if (requireAllowLabel && allowLabel) qParts.push(`label:${allowLabel}`);
     if (getEnvBool('AUTODRAFT_EXCLUDE_PROMOTIONS', true)) qParts.push('-category:promotions');
-    if (PROCESSED_LABEL) qParts.push(`-label:${PROCESSED_LABEL}`);
+    if (shouldMarkProcessedLabel() && PROCESSED_LABEL) qParts.push(`-label:${PROCESSED_LABEL}`);
     return qParts.join(' ');
   };
   const limit = Number(process.env.AUTODRAFT_MAX_PER_POLL || '5');
@@ -398,11 +423,31 @@ async function runAutoDraftForToken(
       const displayName = extractDisplayName(lastMsg.from) || extractDisplayName(meta.from);
       const greeting = buildRecipientGreeting(displayName);
       const t0 = Date.now();
-      const body = await generateDraftBody(ctx, greeting, gmailSignature);
-      const draftPayload = { to: toAddr, subject, body, threadId, createdAt: Date.now() } as any;
+      let body = await generateDraftBody(ctx, greeting, gmailSignature);
+      if (shouldAppendOriginalQuote()) {
+        body = appendOriginalQuote(body, buildOriginalQuoteBlock(lastMsg));
+      }
+      const inReplyTo = (lastMsg as any).messageIdHeader as string | undefined;
+      const refs = (lastMsg as any).references as string | undefined;
+      const mergedReferences = [refs, inReplyTo].filter((v, i, arr) => !!v && arr.indexOf(v) === i).join(' ').trim();
+      const draftPayload = {
+        to: toAddr,
+        subject,
+        body,
+        threadId,
+        inReplyToMessageId: inReplyTo,
+        references: mergedReferences || undefined,
+        createdAt: Date.now(),
+      } as any;
       await createGmailDraftDirect(draftPayload, accessToken);
       drafted++;
-      try { await markMessageProcessed(meta.latestId, accessToken, maskedEmail || accessToken); } catch (e) { console.warn('[autodraft] mark processed failed', e); }
+      if (shouldMarkProcessedLabel()) {
+        try {
+          await markMessageProcessed(meta.latestId, accessToken, maskedEmail || accessToken);
+        } catch (e) {
+          console.warn('[autodraft] mark processed failed', e);
+        }
+      }
       try { upsertAutodraftState(threadId, meta.latestId); } catch {}
       try {
         logAction({

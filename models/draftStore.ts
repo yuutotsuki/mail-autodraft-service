@@ -6,6 +6,7 @@ export type DraftData = {
   cc?: string;
   bcc?: string;
   inReplyToMessageId?: string;
+  references?: string;
   createdAt: number; // UNIXタイムスタンプ
   draftId?: string;
 };
