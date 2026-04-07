@@ -96,6 +96,7 @@ export async function getGmailThread(threadId: string, accessTokenOverride?: str
   id: string;
   messages: Array<{
     id: string;
+    labelIds?: string[];
     subject?: string;
     from?: string;
     to?: string;
@@ -156,7 +157,8 @@ export async function getGmailThread(threadId: string, accessTokenOverride?: str
     maybeLogMime('thread.to', rawTo, to);
     const date = parseHeader(headers, 'Date');
     const text = decodeBody(payload) || m.snippet || '';
-    return { id: m.id as string, subject, from, to, date, text, messageIdHeader, references };
+    const labelIds = Array.isArray(m.labelIds) ? m.labelIds.filter((x: any) => typeof x === 'string') : undefined;
+    return { id: m.id as string, labelIds, subject, from, to, date, text, messageIdHeader, references };
   });
   return { id: String(data.id || threadId), messages: out };
 }

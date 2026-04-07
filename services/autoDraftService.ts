@@ -168,6 +168,10 @@ function shouldSkipByHeuristics(from?: string, subject?: string): boolean {
   return false;
 }
 
+function threadHasDraft(messages: Array<{ labelIds?: string[] }>): boolean {
+  return messages.some((m) => Array.isArray(m.labelIds) && m.labelIds.includes('DRAFT'));
+}
+
 function buildConversationText(thread: { messages: Array<{ from?: string; to?: string; date?: string; subject?: string; text?: string }> }): string {
   const parts: string[] = [];
   const last = Math.max(0, thread.messages.length - Number(process.env.AUTODRAFT_HISTORY_LIMIT || '5'));
@@ -407,6 +411,10 @@ async function runAutoDraftForToken(
       const thread = await getGmailThread(threadId, accessToken);
       const msgs = thread.messages;
       if (!Array.isArray(msgs) || msgs.length === 0) continue;
+      if (threadHasDraft(msgs as any[])) {
+        // Gmail thread already has a draft. Avoid creating duplicate drafts after restarts/redeploys.
+        continue;
+      }
       const lastMsg = msgs[msgs.length - 1];
       const toAddr = extractEmail(lastMsg.from) || extractEmail(meta.from);
       const subject = ensureReplySubject(lastMsg.subject || meta.subject);
